@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Frise</title>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<style>
+  html, body { margin:0; padding:0; font-family: Arial, Helvetica, sans-serif; background:#fff; }
+  #frise { width:100%; height:100%; display:block; }
+  .lane-label { font-size:16px; font-weight:bold; fill:#000; }
+  .tick-label { font-size:11px; fill:#333; }
+  .curseur-label { font-size:13px; font-weight:bold; fill:#c00; }
+  .titre-annee { font-size:26px; font-weight:bold; fill:#000; }
+</style>
+</head>
+<body>
+<svg id="frise" viewBox="0 0 1000 340" xmlns="http://www.w3.org/2000/svg"></svg>
+
+<script>
+// ---- Mapping des colonnes attendues dans la table Jalons ----
+grist.ready({
+  requiredAccess: 'read table',
+  columns: [
+    { name: 'Date', title: 'Date', type: 'Date' },
+    { name: 'Titre', title: 'Titre', type: 'Text' },
+    { name: 'Type', title: 'Type (INV / PRE / Curseur)', type: 'Text' }
+  ]
+});
+
+grist.onRecords(function (records, mappings) {
+  var rows = grist.mapColumnNames(records, mappings) || records;
+  dessinerFrise(rows);
+});
+
+function dessinerFrise(rows) {
+  var svg = document.getElementById('frise');
+  svg.innerHTML = '';
+
+  var invRows = rows.filter(r => r.Type === 'INV');
+  var preRows = rows.filter(r => r.Type === 'PRE');
+  var curseurRows = rows.filter(r => r.Type === 'Curseur');
+
+  var toTime = d => (d instanceof Date ? d : new Date(d)).getTime();
+
+  var allDates = invRows.concat(preRows).map(r => toTime(r.Date));
+  if (allDates.length === 0) return;
+  var minDate = Math.min.apply(null, allDates);
+  var maxDate = Math.max.apply(null, allDates);
+  if (minDate === maxDate) maxDate = minDate + 1;
+
+  var marginLeft = 90, marginRight = 60, width = 1000;
+  var xScale = t => marginLeft + (t - minDate) / (maxDate - minDate) * (width - marginLeft - marginRight);
+
+  var yINV = 110, yPRE = 260;
+
+  function ns(tag) { return document.createElementNS('http://www.w3.org/2000/svg', tag); }
+
+  function ligneAxe(y, label) {
+    var x1 = xScale(minDate), x2 = xScale(maxDate) + 20;
+    var line = ns('line');
+    line.setAttribute('x1', x1); line.setAttribute('y1', y);
+    line.setAttribute('x2', x2); line.setAttribute('y2', y);
+    line.setAttribute('stroke', '#000'); line.setAttribute('stroke-width', 2);
+    svg.appendChild(line);
+
+    // flèche
+    var arrow = ns('polygon');
+    arrow.setAttribute('points', (x2)+','+(y-6)+' '+(x2+16)+','+y+' '+(x2)+','+(y+6));
+    arrow.setAttribute('fill', '#000');
+    svg.appendChild(arrow);
+
+    var txt = ns('text');
+    txt.setAttribute('x', 10); txt.setAttribute('y', y + 5);
+    txt.setAttribute('class', 'lane-label');
+    txt.textContent = label;
+    svg.appendChild(txt);
+  }
+
+  function ticks(rowsArr, y) {
+    rowsArr.forEach(function (r) {
+      var x = xScale(toTime(r.Date));
+      var tick = ns('line');
+      tick.setAttribute('x1', x); tick.setAttribute('y1', y - 12);
+      tick.setAttribute('x2', x); tick.setAttribute('y2', y + 12);
+      tick.setAttribute('stroke', '#000'); tick.setAttribute('stroke-width', 2);
+      svg.appendChild(tick);
+
+      if (r.Titre) {
+        var txt = ns('text');
+        txt.setAttribute('x', x); txt.setAttribute('y', y - 18);
+        txt.setAttribute('text-anchor', 'middle');
+        txt.setAttribute('class', 'tick-label');
+        txt.textContent = r.Titre;
+        svg.appendChild(txt);
+      }
+    });
+  }
+
+  ligneAxe(yINV, 'INV');
+  ligneAxe(yPRE, 'PRE');
+  ticks(invRows, yINV);
+  ticks(preRows, yPRE);
+
+  // ---- Curseur rouge "Actuel" ----
+  if (curseurRows.length > 0) {
+    var xc = xScale(toTime(curseurRows[0].Date));
+    var vline = ns('line');
+    vline.setAttribute('x1', xc); vline.setAttribute('y1', yINV - 40);
+    vline.setAttribute('x2', xc); vline.setAttribute('y2', yPRE + 40);
+    vline.setAttribute('stroke', '#c00'); vline.setAttribute('stroke-width', 3);
+    svg.appendChild(vline);
+
+    var txt = ns('text');
+    txt.setAttribute('x', xc); txt.setAttribute('y', yPRE + 60);
+    txt.setAttribute('text-anchor', 'middle');
+    txt.setAttribute('class', 'curseur-label');
+    txt.textContent = curseurRows[0].Titre || 'Actuel';
+    svg.appendChild(txt);
+  }
+}
+</script>
+</body>
+</html>
